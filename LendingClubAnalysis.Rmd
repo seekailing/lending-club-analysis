@@ -1,3 +1,4 @@
+
 ---
 title: "LendingClubAnalysis"
 author: "Steve Isaacs"
@@ -7,7 +8,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(formattable)
+library(ggthemr)
 ```
+
 
 Business Problem: Assessing credit worthiness of customers in Lending Club and their probability of defaulting.
 
@@ -37,18 +42,132 @@ We would suggest the following process
 ### 3.Key Summary of Data
 
 ```{r eval = FALSE, echo=TRUE, comment=NA, warning=FALSE, message=FALSE,results='markup'}
-Projectdata<- read.csv(file = "Data/loan.csv", header = TRUE, sep=","))
+Projectdata<- read.csv(file = "Data/loan.csv", header = TRUE, sep=",")
 print(colnames(Projectdata))
-summmary(Projectdata)
+
+#Reduce Projectdata set into smaller dataframe name Loandata of identified Relevant Variables
+
+Loandata <- Projectdata[, c("addr_state", "annual_inc", "annual_inc_joint","application_type", "delinq_2yrs", "emp_length" ,"funded_amnt" ,"funded_amnt_inv", "grade", "home_ownership", "id" , "loan_amnt" , "loan_status", "member_id" , "mths_since_last_delinq" , "open_acc" , "out_prncp" ,"out_prncp_inv", "pub_rec", "purpose" , "revol_bal" , "revol_util" , "sub_grade", "term", "total_acc" ,"verification_status_joint", "verification_status")]
+
+install.packages("DescTools")
+library(DescTools)
+options(scipen=1000)
+
+#look at distribution of LoanAmount
+Desc(Loandata$loan_amnt, main="Loan Amount",plotit = TRUE)
+Desc(Loandata$loan_status, main= "Loan Status", plotit = T)
+
+#Visualise Loan Amount by Status
+#box_status <- ggplot(Loandata, aes(loan_status, loan_amnt))
+#box_status + geom_boxplot(aes(fill = loan_status)) + theme(axis.text.x = element_blank()) + labs(list(title = "Loan amount by status", x = "Status",y = "Amount"))
+
 ```
 <br>
 
 ### 4.Dimensionality Reduction
+```{r eval = FALSE, echo=TRUE, comment=NA, warning=FALSE, message=FALSE,results='markup'}
+# Package options
+suppressWarnings(ggthemr('fresh'))  # ggplot theme
+opts_knit$set(progress=FALSE, verbose=FALSE)
+opts_chunk$set(echo=FALSE, fig.align="center", fig.width=10, fig.height=6.5)
+options(knitr.kable.NA = '')
 
+dformat <-function(df) {
+  if (class(df) != "data.frame")
+    df <- as.data.frame(df)
+  x <- lapply(colnames(df), function(col) {
+    if (is.numeric(df[, col]))
+      color_bar(rgb(238, 238, 238, max=255), min=0.1, na.rm=TRUE)
+    else
+      formatter("span")
+  })
+  names(x) <- colnames(df)
+  formattable(df, x)
+}
+
+# SET UP OF ALL THE INPUTS FOR THIS PART
+
+# Please enter the minimum number below which you would like not to print - this makes the readability of the tables easier. Default values are either 10e6 (to print everything) or 0.5. Try both to see the difference.
+MIN_VALUE=0.1
+
+# Please enter the maximum number of observations to show in the report and slides 
+# (DEFAULT is 15. If the number is large the report and slides may not be generated - very slow or will crash!!)
+max_data_report = 10
+
+# Please ENTER then original raw attributes to use. 
+# Please use numbers, not column names! e.g. c(1:5, 7, 8) uses columns 1,2,3,4,5,7,8
+factor_attributes_used= c(2:30)
+
+# Please ENTER the selection criterions for the factors to use. 
+# Choices: "eigenvalue", "variance", "manual"
+factor_selectionciterion = "eigenvalue"
+
+# Please ENTER the desired minumum variance explained 
+# (ONLY USED in case "variance" is the factor selection criterion used). 
+minimum_variance_explained = 65  # between 1 and 100
+
+# Please ENTER the number of factors to use 
+# (ONLY USED in case "manual" is the factor selection criterion used).
+manual_numb_factors_used = 15
+
+# Please ENTER the rotation eventually used (e.g. "none", "varimax", "quatimax", "promax", "oblimin", "simplimax", and "cluster" - see help(principal)). Defauls is "varimax"
+rotation_used="varimax"
+
+factor_attributes_used = unique(sapply(factor_attributes_used,function(i) min(ncol(Loandata), max(i,1))))
+LoandataFactor=Loandata[,factor_attributes_used]
+LoandataFactor <- Loandata <- data.matrix(LoandataFactor)
+
+#Check Correlations
+thecor = round(cor(LoandataFactor),2)
+
+minval <- 0.1
+thecor_thres <- thecor
+thecor_thres[abs(thecor_thres) < minval]<-"-"
+
+colnames(thecor_thres)<-colnames(LoandataFactor)
+rownames(thecor_thres)<-colnames(LoandataFactor)
+
+dformat(thecor_thres)
+
+```
+
+```{r eval = TRUE, echo=TRUE, comment=NA, warning=FALSE, message=FALSE,results='markup'}
+
+library(psych)
+library(FactoMineR)
+library(magrittr)
+
+# Here is how the `principal` function is used
+UnRotated_Results<-principal(LoandataFactor, nfactors=ncol(LoandataFactor), rotate="none",score=TRUE)
+UnRotated_Factors<-round(UnRotated_Results$loadings,2)
+UnRotated_Factors<-as.data.frame(unclass(UnRotated_Factors))
+colnames(UnRotated_Factors)<-paste("Component",1:ncol(UnRotated_Factors),sep=" ")
+
+# Here is how we use the `PCA` function 
+Variance_Explained_Table_results<-PCA(LoandataFactor, graph=FALSE)
+Variance_Explained_Table<-Variance_Explained_Table_results$eig
+Variance_Explained_Table_copy<-Variance_Explained_Table
+
+
+rownames(Variance_Explained_Table) <- paste("Component", 1:nrow(Variance_Explained_Table))
+colnames(Variance_Explained_Table) <- c("Eigenvalue", "Pct of explained variance", "Cumulative pct of explained variance")
+
+#Look at the Variance Explained Table
+dformat(round(Variance_Explained_Table, 2))
+
+#Look at EigenValues
+eigenvalues  <- Variance_Explained_Table[, "Eigenvalue"]
+df           <- cbind(as.data.frame(eigenvalues), c(1:length(eigenvalues)), rep(1, length(eigenvalues)))
+colnames(df) <- c("eigenvalues", "components", "abline")
+#ggplot(melt(df, id="components"), aes(x=components, y=value, colour=variable)) + geom_line()
+#c3(melt(df, id="components"), x="components", y="value", group="variable") %>% c3_line('spline')
+
+```
 
 <br>
 ### 5.Clustering and Segmentation
 
 <br>
 ### 6. Results 
+
 
